@@ -61,9 +61,9 @@
 #define CHAR_NOTIFY_UUID    "f0000003-0451-4000-b000-000000000002"
 
 // Internet server (placeholder)
-const char* INTERNET_SERVER_HOST = "example.com"; // change to your server
-const char* INTERNET_API_SEND = "/api/send_message";
-const char* INTERNET_API_PEERS = "/api/get_online_peers";
+const char* INTERNET_SERVER_HOST = "lukaness.github.io"; // change to your server
+const char* INTERNET_API_SEND = "/hypersmart-watch/api/send_message";
+const char* INTERNET_API_PEERS = "/hypersmart-watch/api/get_online_peers";
 
 // Storage & persistence
 const int STORAGE_WARNING_PERCENT = 90;
@@ -72,6 +72,20 @@ const char* CONTACTS_PATH = "/contacts.json";
 const char* MESSAGE_QUEUE_PATH = "/msg_queue.json";
 
 TFT_eSPI tft = TFT_eSPI();
+TFT_eSprite uiSprite = TFT_eSprite(&tft);
+TFT_eSprite iconSprite = TFT_eSprite(&tft);
+
+// ---------- ICON GRAPHICS ----------
+extern const uint16_t icon_clock[4096];
+extern const uint16_t icon_camera[4096];
+extern const uint16_t icon_messages[4096];
+extern const uint16_t icon_contacts[4096];
+extern const uint16_t icon_files[4096];
+extern const uint16_t icon_wifi[4096];
+
+int scrollIndex = 0;
+bool redrawUI = true;
+
 WebServer server(80);
 
 // ---------- GLOBALS ----------
@@ -84,6 +98,10 @@ struct Account {
   String username;
   String deviceId;
   String token;
+  String email;
+  String Password;
+  String Pin;
+  String Phone;
 };
 Account localAccount;
 
@@ -138,6 +156,13 @@ String nowStr() {
   snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu", hh, mm, ss);
   return String(buf);
 }
+void drawIcon64(const uint16_t *icon, int x, int y) {
+  iconSprite.createSprite(64, 64);
+  iconSprite.pushImage(0, 0, 64, 64, icon);
+  iconSprite.pushSprite(x, y);
+  iconSprite.deleteSprite();
+}
+
 
 // ---------- CAMERA ----------
 bool initCamera() {
@@ -611,24 +636,50 @@ void drawClockScreen() {
 }
 
 void drawLauncher() {
-  tft.fillScreen(TFT_NAVY);
-  tft.setTextSize(2); tft.setTextColor(TFT_WHITE);
-  tft.drawString("Apps", 6, 4);
-  const char* labels[] = {"Clock","Camera","Messages","Contacts","Files","WiFi"};
-  int idx=0;
-  for (int r=0;r<3;r++) for (int c=0;c<2;c++) {
-    int x = 10 + c*110; int y=30 + r*60;
-    tft.fillRoundRect(x,y,100,50,8,TFT_BLACK);
-    tft.setTextSize(1); tft.drawString(labels[idx], x+8, y+18);
-    idx++; if (idx>=6) break;
-  }
+  uiSprite.createSprite(tft.width(), tft.height());
+  uiSprite.fillSprite(TFT_BLACK);
+
+  drawIcon64(icon_clock,    20, 30);
+  drawIcon64(icon_camera,  120, 30);
+  drawIcon64(icon_messages,20, 120);
+  drawIcon64(icon_contacts,120,120);
+  drawIcon64(icon_files,   20, 210);
+  drawIcon64(icon_wifi,    120,210);
+
+  uiSprite.pushSprite(0,0);
+  uiSprite.deleteSprite();
 }
+
+void slideTransition(void (*drawFunc)(), bool left=true) {
+  TFT_eSprite s1(&tft), s2(&tft);
+  s1.createSprite(tft.width(), tft.height());
+  s2.createSprite(tft.width(), tft.height());
+
+  s1.fillSprite(TFT_BLACK);
+  s2.fillSprite(TFT_BLACK);
+
+  s1.pushSprite(0,0);
+  drawFunc();
+  s2.pushSprite(0,0);
+
+  for (int i=0;i<=tft.width();i+=20) {
+    tft.fillScreen(TFT_BLACK);
+    s1.pushSprite(left?-i:i,0);
+    s2.pushSprite(left?(tft.width()-i):(-tft.width()+i),0);
+    delay(10);
+  }
+
+  s1.deleteSprite();
+  s2.deleteSprite();
+}
+
 
 // ---------- SETUP ----------
 void setup() {
   Serial.begin(115200);
   delay(50);
   pinMode(BUZZER_PIN, OUTPUT); pinMode(VIB_PIN, OUTPUT); pinMode(LED_PIN, OUTPUT);
+  slideTransition(drawLauncher);
   pinMode(BUTTON_A, INPUT_PULLUP); pinMode(BUTTON_B, INPUT_PULLUP);
   tft.init(); tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
@@ -645,7 +696,6 @@ void setup() {
   server.begin();
   drawClockScreen();
 }
-
 // ---------- MAIN LOOP ----------
 void loop() {
   unsigned long now = millis();
